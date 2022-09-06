@@ -1846,12 +1846,6 @@
             <name>$PROJ_DIR$\..\zstack-lib\hal_i2c.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\zstack-lib\inttempsens.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\zstack-lib\inttempsens.h</name>
-        </file>
-        <file>
             <name>$PROJ_DIR$\..\zstack-lib\utils.c</name>
         </file>
         <file>
