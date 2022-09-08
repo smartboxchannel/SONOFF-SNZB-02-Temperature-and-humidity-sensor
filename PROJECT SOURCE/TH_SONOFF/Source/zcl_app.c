@@ -272,9 +272,11 @@ static void zclApp_ReadSensors(void) {
       if(!pushBut){
       if(startWork <= 10){   
         startWork++;
+        zclBattery_Report();
         osal_start_timerEx(zclApp_TaskID, APP_REPORT_CEVT, 250);
       }
       }else{
+        zclBattery_Report();
         osal_start_timerEx(zclApp_TaskID, APP_REPORT_CEVT, 250);
       }
         break;
