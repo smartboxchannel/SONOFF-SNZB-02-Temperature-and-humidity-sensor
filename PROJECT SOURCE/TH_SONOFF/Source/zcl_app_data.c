@@ -35,7 +35,7 @@ const uint8 zclApp_StackVersion = 4;
 
 const uint8 zclApp_ManufacturerName[] = {13, 'e', 'f', 'e', 'k', 't', 'a', 'l', 'a', 'b', '.', 'c', 'o', 'm'};
 
-const uint8 zclApp_ModelId[] = {14, 'Z', 'B', '-', 'T', 'H', '0', '1', '_', 'E', 'F', 'E', 'K', 'T', 'A'};
+const uint8 zclApp_ModelId[] = {14, 'S', 'N', 'Z', 'B', '-', '0', '2', '_', 'E', 'F', 'E', 'K', 'T', 'A'};
 
 const uint8 zclApp_PowerSource = POWER_SOURCE_BATTERY;
 
