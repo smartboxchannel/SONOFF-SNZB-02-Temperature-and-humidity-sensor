@@ -20,6 +20,8 @@ An alternative firmware version for the SONOFF SNZB-02 temperature and humidity 
 
 ![SONOFF SNZB-02 Temperature and humidity sensor](https://github.com/smartboxchannel/SONOFF-SNZB-02-Temperature-and-humidity-sensor/blob/main/IMAGES/photo_2022-09-08_18-49-16.jpg)
 
+![SONOFF SNZB-02 Temperature and humidity sensor](https://github.com/smartboxchannel/SONOFF-SNZB-02-Temperature-and-humidity-sensor/blob/main/IMAGES/photo_2022-09-08_19-19-08.jpg)
+
 ---
 
 ### How to flash the device
