@@ -84,8 +84,6 @@ https://github.com/sigma7i/zigbee-wiki/wiki/zigbee-firmware-install (RU)
 2. Find the friendly_name of your device. 
 3. For example to add a temperature calibration you need to add the string temperature_calibration: 5. 
 
-All configuration parameters are described in the Options section ( https://www.zigbee2mqtt.io/devices/EFEKTA_PWS.html )
-
 ![Plant-Watering-Sensor-Zigbee2](https://github.com/smartboxchannel/Plant-Watering-Sensor-Zigbee/blob/main/IMAGES/2000.png) 
 
 ### Troubleshooting
