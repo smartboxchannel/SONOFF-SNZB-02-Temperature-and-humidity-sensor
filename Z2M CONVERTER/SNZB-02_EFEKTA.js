@@ -14,7 +14,7 @@ const tzLocal = {
             const value = lookup.hasOwnProperty(rawValue) ? lookup[rawValue] : parseInt(rawValue, 10);
             const payloads = {
                 report_delay: ['genPowerCfg', {0x0201: {value, type: 0x21}}],
-				comparison_previous_data: ['genPowerCfg', {0x0205: {value, type: 0x10}}],
+		comparison_previous_data: ['genPowerCfg', {0x0205: {value, type: 0x10}}],
             };
             await entity.write(payloads[key][0], payloads[key][1]);
             return {
@@ -30,8 +30,8 @@ const tzLocal = {
             const payloads = {
                 high_temp: ['msTemperatureMeasurement', {0x0221: {value, type: 0x29}}],
                 low_temp: ['msTemperatureMeasurement', {0x0222: {value, type: 0x29}}],
-				enable_temp: ['msTemperatureMeasurement', {0x0220: {value, type: 0x10}}],
-				invert_logic_temp: ['msTemperatureMeasurement', {0x0225: {value, type: 0x10}}],
+		enable_temp: ['msTemperatureMeasurement', {0x0220: {value, type: 0x10}}],
+		invert_logic_temp: ['msTemperatureMeasurement', {0x0225: {value, type: 0x10}}],
             };
             await entity.write(payloads[key][0], payloads[key][1]);
             return {
@@ -47,8 +47,8 @@ const tzLocal = {
             const payloads = {
                 high_hum: ['msRelativeHumidity', {0x0221: {value, type: 0x21}}],
                 low_hum: ['msRelativeHumidity', {0x0222: {value, type: 0x21}}],
-				enable_hum: ['msRelativeHumidity', {0x0220: {value, type: 0x10}}],
-				invert_logic_hum: ['msRelativeHumidity', {0x0225: {value, type: 0x10}}],
+		enable_hum: ['msRelativeHumidity', {0x0220: {value, type: 0x10}}],
+		invert_logic_hum: ['msRelativeHumidity', {0x0225: {value, type: 0x10}}],
             };
             await entity.write(payloads[key][0], payloads[key][1]);
             return {
@@ -93,8 +93,8 @@ const fzLocal = {
             if (msg.data.hasOwnProperty(0x0201)) {
                 result.report_delay = msg.data[0x0201];
             }
-			if (msg.data.hasOwnProperty(0x0205)) {
-				result.comparison_previous_data = ['OFF', 'ON'][msg.data[0x0205]];
+	    if (msg.data.hasOwnProperty(0x0205)) {
+		result.comparison_previous_data = ['OFF', 'ON'][msg.data[0x0205]];
             }
             return result;
         },
@@ -107,13 +107,13 @@ const fzLocal = {
             if (msg.data.hasOwnProperty(0x0221)) {
                 result.high_temp = msg.data[0x0221];
             }
-			if (msg.data.hasOwnProperty(0x0222)) {
+	    if (msg.data.hasOwnProperty(0x0222)) {
                 result.low_temp = msg.data[0x0222];
             }
             if (msg.data.hasOwnProperty(0x0220)) {
                 result.enable_temp = ['OFF', 'ON'][msg.data[0x0220]];
             }
-			if (msg.data.hasOwnProperty(0x0225)) {
+            if (msg.data.hasOwnProperty(0x0225)) {
                 result.invert_logic_temp = ['OFF', 'ON'][msg.data[0x0225]];
             }
             return result;
@@ -127,13 +127,13 @@ const fzLocal = {
             if (msg.data.hasOwnProperty(0x0221)) {
                 result.high_hum = msg.data[0x0221];
             }
-			if (msg.data.hasOwnProperty(0x0222)) {
+	    if (msg.data.hasOwnProperty(0x0222)) {
                 result.low_hum = msg.data[0x0222];
             }
             if (msg.data.hasOwnProperty(0x0220)) {
                 result.enable_hum = ['OFF', 'ON'][msg.data[0x0220]];
             }
-			if (msg.data.hasOwnProperty(0x0225)) {
+	    if (msg.data.hasOwnProperty(0x0225)) {
                 result.invert_logic_hum = ['OFF', 'ON'][msg.data[0x0225]];
             }
             return result;
@@ -169,33 +169,33 @@ const definition = {
         vendor: 'Custom devices (DiY)',
         description: 'EFEKTA_SS - temperature and humidity sensors with increased battery life',
         fromZigbee: [fz.temperature, fz.humidity, fz.battery, fzLocal.termostat_config, fzLocal.hydrostat_config, fzLocal.node_config,
-			fzLocal.temperaturef_config, fzLocal.humidityf_config],
+		fzLocal.temperaturef_config, fzLocal.humidityf_config],
         toZigbee: [tz.factory_reset, tzLocal.termostat_config, tzLocal.hydrostat_config, tzLocal.node_config,
-			tzLocal.temperaturef_config, tzLocal.humidityf_config],
+		tzLocal.temperaturef_config, tzLocal.humidityf_config],
         configure: async (device, coordinatorEndpoint, logger) => {
-            const endpointOne = device.getEndpoint(1);
-            await reporting.bind(endpointOne, coordinatorEndpoint, ['genPowerCfg', 'msTemperatureMeasurement', 'msRelativeHumidity']);
+		const endpointOne = device.getEndpoint(1);
+		await reporting.bind(endpointOne, coordinatorEndpoint, ['genPowerCfg', 'msTemperatureMeasurement', 'msRelativeHumidity']);
         },
         exposes: [e.temperature(), e.humidity(), e.battery(), e.battery_low(), e.battery_voltage(),
-		    exposes.numeric('report_delay', ea.STATE_SET).withUnit('Seconds').withDescription('Adjust Report Delay. Setting the time in seconds, by default 60 seconds')
-                .withValueMin(10).withValueMax(3600),
-		    exposes.binary('comparison_previous_data', ea.STATE_SET, 'ON', 'OFF').withDescription('Enable сontrol of comparison with previous data'),
-			exposes.numeric('temperature_offset', ea.STATE_SET).withUnit('°C').withValueStep(0.1).withDescription('Adjust temperature')
-                .withValueMin(-50.0).withValueMax(50.0),
-			exposes.numeric('humidity_offset', ea.STATE_SET).withUnit('%').withValueStep(0.1).withDescription('Adjust humidity')
-                .withValueMin(-50.0).withValueMax(50.0),
-		    exposes.binary('enable_temp', ea.STATE_SET, 'ON', 'OFF').withDescription('Enable Temperature Control'),
-		    exposes.binary('invert_logic_temp', ea.STATE_SET, 'ON', 'OFF').withDescription('Invert Logic Temperature Control'),
-            exposes.numeric('high_temp', ea.STATE_SET).withUnit('C').withDescription('Setting High Temperature Border')
-                .withValueMin(-5).withValueMax(50),
-            exposes.numeric('low_temp', ea.STATE_SET).withUnit('C').withDescription('Setting Low Temperature Border')
-                .withValueMin(-5).withValueMax(50),				
-		    exposes.binary('enable_hum', ea.STATE_SET, 'ON', 'OFF').withDescription('Enable Humidity Control'),
-		    exposes.binary('invert_logic_hum', ea.STATE_SET, 'ON', 'OFF').withDescription('Invert Logoc Humidity Control'),
-            exposes.numeric('high_hum', ea.STATE_SET).withUnit('C').withDescription('Setting High Humidity Border')
-                .withValueMin(0).withValueMax(99),
-            exposes.numeric('low_hum', ea.STATE_SET).withUnit('C').withDescription('Setting Low Humidity Border')
-                .withValueMin(0).withValueMax(99)],
+		exposes.numeric('report_delay', ea.STATE_SET).withUnit('Seconds').withDescription('Adjust Report Delay. Setting the time in seconds, by default 60 seconds')
+			.withValueMin(10).withValueMax(3600),
+		exposes.binary('comparison_previous_data', ea.STATE_SET, 'ON', 'OFF').withDescription('Enable сontrol of comparison with previous data'),
+		exposes.numeric('temperature_offset', ea.STATE_SET).withUnit('°C').withValueStep(0.1).withDescription('Adjust temperature')
+			.withValueMin(-50.0).withValueMax(50.0),
+		exposes.numeric('humidity_offset', ea.STATE_SET).withUnit('%').withValueStep(0.1).withDescription('Adjust humidity')
+			.withValueMin(-50.0).withValueMax(50.0),
+		exposes.binary('enable_temp', ea.STATE_SET, 'ON', 'OFF').withDescription('Enable Temperature Control'),
+		 exposes.binary('invert_logic_temp', ea.STATE_SET, 'ON', 'OFF').withDescription('Invert Logic Temperature Control'),
+		exposes.numeric('high_temp', ea.STATE_SET).withUnit('C').withDescription('Setting High Temperature Border')
+			.withValueMin(-5).withValueMax(50),
+		exposes.numeric('low_temp', ea.STATE_SET).withUnit('C').withDescription('Setting Low Temperature Border')
+			.withValueMin(-5).withValueMax(50),				
+		exposes.binary('enable_hum', ea.STATE_SET, 'ON', 'OFF').withDescription('Enable Humidity Control'),
+		exposes.binary('invert_logic_hum', ea.STATE_SET, 'ON', 'OFF').withDescription('Invert Logoc Humidity Control'),
+		exposes.numeric('high_hum', ea.STATE_SET).withUnit('C').withDescription('Setting High Humidity Border')
+			.withValueMin(0).withValueMax(99),
+		 exposes.numeric('low_hum', ea.STATE_SET).withUnit('C').withDescription('Setting Low Humidity Border')
+			.withValueMin(0).withValueMax(99)],
 };
 
 module.exports = definition;
