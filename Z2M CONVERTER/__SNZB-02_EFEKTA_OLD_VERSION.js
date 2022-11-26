@@ -114,7 +114,7 @@ const definition = {
             const endpoint = device.getEndpoint(1);
             await reporting.bind(endpoint, coordinatorEndpoint, [
                 'genPowerCfg', 'msTemperatureMeasurement', 'msRelativeHumidity']);
-		    const overides = {min: 0, max: 43200, change: 0};
+            const overides = {min: 0, max: 43200, change: 0};
             await reporting.batteryVoltage(endpoint, overides);
             await reporting.batteryPercentageRemaining(endpoint, overides);
         },
