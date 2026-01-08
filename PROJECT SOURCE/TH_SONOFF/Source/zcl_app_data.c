@@ -21,7 +21,7 @@
 #define DEFAULT_ENABLE_HUM FALSE
 #define DEFAULT_INVERT_TEMP FALSE
 #define DEFAULT_INVERT_HUM FALSE
-#define APP_REPORT_DELAY 5
+#define APP_REPORT_DELAY 6
 
 const uint16 zclApp_clusterRevision_all = 0x0001;
 
@@ -103,3 +103,4 @@ SimpleDescriptionFormat_t zclApp_FirstEP = {
     APP_MAX_OUTCLUSTERS_FIRST_EP,
     (cId_t *)zclApp_OutClusterListFirstEP
 };
+
