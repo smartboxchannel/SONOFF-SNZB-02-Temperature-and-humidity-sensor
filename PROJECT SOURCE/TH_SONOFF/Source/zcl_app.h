@@ -5,14 +5,13 @@
 extern "C" {
 #endif
 
-#include "version.h"
 #include "zcl.h"
 
 #define APP_REPORT_EVT                  0x0001
 #define APP_READ_SENSORS_EVT            0x0002
 #define APP_SAVE_ATTRS_EVT              0x0004
 #define APP_REPORT_BEVT                 0x0008
-#define APP_REPORT_CEVT                 0x0020
+#define APP_LED_EVT                     0x0010
 
 #define NW_APP_CONFIG 0x0402   
    
@@ -28,12 +27,14 @@ extern "C" {
 #define HUMIDITY    ZCL_CLUSTER_ID_MS_RELATIVE_HUMIDITY
  
 #define ATTRID_ReportDelay       0x0201      
-#define ATTRID_SET_HIGHTEMP      0x0202
-#define ATTRID_SET_LOWTEMP       0x0203
-#define ATTRID_SET_HIGHHUM       0x0204
-#define ATTRID_SET_LOWHUM        0x0205
-#define ATTRID_ENABLE_TEMP       0x0206
-#define ATTRID_ENABLE_HUM        0x0207
+#define ATTRID_SET_HIGHTEMP               0x0221
+#define ATTRID_SET_LOWTEMP                0x0222
+#define ATTRID_SET_HIGHHUM                0x0221
+#define ATTRID_SET_LOWHUM                 0x0222  
+#define ATTRID_ENABLE_TEMP                0x0220
+#define ATTRID_ENABLE_HUM                 0x0220
+#define ATTRID_INVERT_LOGIC_TEMP          0x0225
+#define ATTRID_INVERT_LOGIC_HUM           0x0225
 
 #define ZCL_UINT8 ZCL_DATATYPE_UINT8
 #define ZCL_UINT16 ZCL_DATATYPE_UINT16
@@ -50,6 +51,8 @@ typedef struct {
     uint16 LowHum;
     uint16 EnableTemp;
     uint16 EnableHum;
+    bool InvertLogicTemp;
+    bool InvertLogicHum;
     uint16 ReportDelay;
 } application_config_t;
 
@@ -60,6 +63,10 @@ extern uint8 zclApp_BatteryPercentageRemainig;
 extern uint16 zclApp_BatteryVoltageRawAdc;
 extern int16 zclApp_Temperature_Sensor_MeasuredValue;
 extern uint16 zclApp_HumiditySensor_MeasuredValue;
+extern int16 sendInitReportCount;
+extern uint8 zclBattery_Voltage;
+extern uint8 zclBattery_PercentageRemainig;
+extern uint16 zclBattery_RawAdc;
 
 extern CONST zclAttrRec_t zclApp_AttrsFirstEP[];
 extern CONST uint8 zclApp_AttrsFirstEPCount;
@@ -67,6 +74,8 @@ extern application_config_t zclApp_Config;
 
 extern const uint8 zclApp_ManufacturerName[];
 extern const uint8 zclApp_ModelId[];
+extern const uint8 zclApp_DateCode[];
+extern const uint8 zclApp_SWBuildID[];
 extern const uint8 zclApp_PowerSource;
 
 extern void zclApp_Init(byte task_id);

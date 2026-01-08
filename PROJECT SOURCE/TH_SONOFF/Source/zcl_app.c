@@ -32,25 +32,49 @@
 
 #include "hal_i2c.h"
 
-#include "battery.h"
 #include "commissioning.h"
 #include "factory_reset.h"
 #include "utils.h"
-#include "version.h"
 
 #include "hdc1080.h"
 
 
 #define HAL_KEY_CODE_RELEASE_KEY HAL_KEY_CODE_NOKEY
 
-#define HAL_KEY_CODE_RELEASE_KEY HAL_KEY_CODE_NOKEY
+#define MULTI (float)0.428
+
+#define VOLTAGE_MIN 2.1
+
+#define VOLTAGE_MAX 3.2
+
+#define ZCL_BATTERY_REPORT_REPORT_CONVERTER(millivolts) getBatteryRemainingPercentageZCLCR2032(millivolts)
+
+#ifdef BDB_REPORTING
+#if BDBREPORTING_MAX_ANALOG_ATTR_SIZE == 8
+  //uint8 reportableChange1[] = {0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // 0x6400 is 100 in int16
+  uint8 reportableChange2[] = {0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // 0x1900 is 25 in int16
+  uint8 reportableChange3[] = {0x32, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // 0x3200 is 50 in int16
+  uint8 reportableChange4[] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // 0x0100 is 1 in int16
+#endif
+#if BDBREPORTING_MAX_ANALOG_ATTR_SIZE == 4
+  //uint8 reportableChange1[] = {0x64, 0x00, 0x00, 0x00}; 
+  uint8 reportableChange2[] = {0x19, 0x00, 0x00, 0x00}; 
+  uint8 reportableChange3[] = {0x32, 0x00, 0x00, 0x00}; 
+  uint8 reportableChange4[] = {0x01, 0x00, 0x00, 0x00}; 
+#endif 
+#if BDBREPORTING_MAX_ANALOG_ATTR_SIZE == 2
+  //uint8 reportableChange1[] = {0x64, 0x00}; 
+  uint8 reportableChange2[] = {0x19, 0x00}; 
+  uint8 reportableChange3[] = {0x32, 0x00}; 
+  uint8 reportableChange4[] = {0x01, 0x00}; 
+#endif 
+#endif      
 
 extern bool requestNewTrustCenterLinkKey;
 byte zclApp_TaskID;
 bool initOut = false;
 int16 sendInitReportCount = 0;
 static uint8 currentSensorsReadingPhase = 0;
-static uint8 currentConfigRepPhase = 0;
 int16 temp_old = 0;
 int16 temp_tr = 10;
 int16 humi_old = 0;
@@ -58,6 +82,7 @@ int16 humi_tr = 25;
 int16 startWork = 0;
 bool pushBut = false;
 
+uint8 SeqNum = 0;
 afAddrType_t inderect_DstAddr = {.addrMode = (afAddrMode_t)AddrNotPresent, .endPoint = 0, .addr.shortAddr = 0};
 
 static void zclApp_BasicResetCB(void);
@@ -68,18 +93,17 @@ static void zclApp_HandleKeys(byte shift, byte keys);
 static void zclApp_Report(void);
 static void zclApp_ReadSensors(void);
 static void zclApp_TempHumiSens(void);
-static void zclSendTemp(int16 temp);
-static void zclSendHum(uint16 hum);
 static void zclApp_SendTemp(void);
 static void zclApp_SendHum(void);
-static void zclSendTemp(int16 temp);
-static void zclSendHum(uint16 hum);
-static void zclApp_SendRepTime(void);
-static void zclApp_ConfigTemp(void);
-static void zclApp_ConfigHum(void);
-static void zclSendRT(void);
-static void zclSendCTTr(void);
-static void zclSendCHTr(void);
+static void zclApp_Termostat(void);
+static void zclApp_Gigrostat(void);
+static uint16 getBatteryVoltage(void);
+static uint8 getBatteryVoltageZCL(uint16 millivolts);
+static uint8 getBatteryRemainingPercentageZCLCR2032(uint16 volt16);
+static void zclBattery_Report(void);
+static void zclBattery_Read(void);
+static void zclApp_LedOn(void);
+static void zclApp_LedOff(void);
 
 static zclGeneral_AppCallbacks_t zclApp_CmdCallbacks = {
     zclApp_BasicResetCB,
@@ -103,15 +127,19 @@ void zclApp_Init(byte task_id) {
     zcl_registerForMsg(zclApp_TaskID);
     RegisterForKeys(zclApp_TaskID);
     
+    bdb_RepAddAttrCfgRecordDefaultToList(1, TEMP, ATTRID_MS_TEMPERATURE_MEASURED_VALUE, 20, 600, reportableChange2);
+    bdb_RepAddAttrCfgRecordDefaultToList(1, HUMIDITY, ATTRID_MS_RELATIVE_HUMIDITY_MEASURED_VALUE, 20, 1200, reportableChange3);   
+    bdb_RepAddAttrCfgRecordDefaultToList(1, POWER_CFG, ATTRID_POWER_CFG_BATTERY_VOLTAGE, 1800, 3600, reportableChange4);
+    bdb_RepAddAttrCfgRecordDefaultToList(1, POWER_CFG, ATTRID_POWER_CFG_BATTERY_PERCENTAGE_REMAINING, 1800, 3600, reportableChange4);
+    
     IO_PUD_PORT(OCM_CLK_PORT, IO_PUP);
     IO_PUD_PORT(OCM_DATA_PORT, IO_PUP)
     HalI2CInit();
     hdc1080_init(TResolution_14,HResolution_14);
-    
-    //LREP("Started build %s \r\n", zclApp_DateCodeNT);
+ 
     zclApp_ReadSensors();
     
-    osal_start_timerEx(zclApp_TaskID, APP_REPORT_EVT, 10000);
+    osal_start_timerEx(zclApp_TaskID, APP_REPORT_EVT, 5000);
     osal_start_reload_timer(zclApp_TaskID, APP_REPORT_BEVT, 7200000);
 }
 
@@ -140,25 +168,25 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
     }
 
     if (events & APP_REPORT_EVT) {
-        LREPMaster("APP_REPORT_EVT\r\n");
+        //LREPMaster("APP_REPORT_EVT\r\n");
         if (initOut == false){
           sendInitReportCount++;
-          if(sendInitReportCount  >=  5){
+          if(sendInitReportCount  >=  10){
             osal_stop_timerEx(zclApp_TaskID, APP_REPORT_EVT);
             osal_clear_event(zclApp_TaskID, APP_REPORT_EVT);
-            osal_start_timerEx(zclApp_TaskID, APP_REPORT_EVT, zclApp_Config.ReportDelay*60000); 
+            osal_start_timerEx(zclApp_TaskID, APP_REPORT_EVT, (uint32)zclApp_Config.ReportDelay*1000); 
             initOut = true;
           }else{
             osal_stop_timerEx(zclApp_TaskID, APP_REPORT_EVT);
             osal_clear_event(zclApp_TaskID, APP_REPORT_EVT);
-            osal_start_timerEx(zclApp_TaskID, APP_REPORT_EVT, 10000);
+            osal_start_timerEx(zclApp_TaskID, APP_REPORT_EVT, 5000);
           }
           pushBut = true;
           zclApp_Report();
         }else{
           osal_stop_timerEx(zclApp_TaskID, APP_REPORT_EVT);
           osal_clear_event(zclApp_TaskID, APP_REPORT_EVT);
-          osal_start_timerEx(zclApp_TaskID, APP_REPORT_EVT, zclApp_Config.ReportDelay*60000); 
+          osal_start_timerEx(zclApp_TaskID, APP_REPORT_EVT, (uint32)zclApp_Config.ReportDelay*1000); 
          zclApp_Report(); 
         }
         return (events ^ APP_REPORT_EVT);
@@ -173,13 +201,7 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
     if (events & APP_REPORT_BEVT) {
         //LREPMaster("APP_REPORT_BEVT\r\n");
         zclBattery_Report();
-        zclApp_SendRepTime();
         return (events ^ APP_REPORT_BEVT);
-    }
-    if (events & APP_REPORT_CEVT) {
-        //LREPMaster("APP_REPORT_CEVT\r\n");
-        zclApp_SendRepTime();
-        return (events ^APP_REPORT_CEVT);
     }
     
     if (events & APP_SAVE_ATTRS_EVT) {
@@ -187,27 +209,45 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
         zclApp_SaveAttributesToNV();
         return (events ^ APP_SAVE_ATTRS_EVT);
     }
+    if (events & APP_LED_EVT) {
+           zclApp_LedOff();
+        return (events ^ APP_LED_EVT);
+    }
     return 0;
 }
 
+
+static void zclApp_LedOn(void){
+   HAL_TURN_ON_LED1();
+  osal_start_timerEx(zclApp_TaskID, APP_LED_EVT, 300);
+}
+
+static void zclApp_LedOff(void){
+   HAL_TURN_OFF_LED1();
+}
+
+
 static void zclApp_HandleKeys(byte portAndAction, byte keyCode) {
-    LREP("zclApp_HandleKeys portAndAction=0x%X keyCode=0x%X\r\n", portAndAction, keyCode);
-    
+    #if APP_COMMISSIONING_BY_LONG_PRESS == TRUE
+    if (bdbAttributes.bdbNodeIsOnANetwork == 1) {
+      zclFactoryResetter_HandleKeys(portAndAction, keyCode);
+    }
+#else
     zclFactoryResetter_HandleKeys(portAndAction, keyCode);
+#endif
+  
     zclCommissioning_HandleKeys(portAndAction, keyCode);
     
     if (portAndAction & HAL_KEY_RELEASE) {
         LREPMaster("Key press\r\n");
         pushBut = true;
         zclApp_Report();
-        osal_start_timerEx(zclApp_TaskID, APP_REPORT_CEVT, 200);
     }
     
 }
 
 
 static void zclApp_BasicResetCB(void) {
-    zclApp_ResetAttributesToDefaultValues();
     zclApp_SaveAttributesToNV();
 }
 
@@ -260,39 +300,21 @@ static void zclApp_ReadSensors(void) {
         break;
         
     case 4:       
-        if(zclApp_Config.EnableTemp == 1){
-          zclApp_ConfigTemp();
-        }
-         if(zclApp_Config.EnableHum == 1){
-        zclApp_ConfigHum(); 
-        }
-        break;
-        
-    case 5:
-      if(!pushBut){
-      if(startWork <= 10){   
-        startWork++;
-        zclBattery_Report();
-        osal_start_timerEx(zclApp_TaskID, APP_REPORT_CEVT, 250);
-      }
-      }else{
-        zclBattery_Report();
-        osal_start_timerEx(zclApp_TaskID, APP_REPORT_CEVT, 250);
-      }
+        zclApp_Termostat();
+        zclApp_Gigrostat();
         break;
 
     default:
         currentSensorsReadingPhase = 0;
          if(pushBut == true){
+        zclBattery_Report();
         pushBut = false;
         }
-        HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
-        osal_pwrmgr_task_state(zclApp_TaskID, PWRMGR_CONSERVE);
         break;
     }
     if (currentSensorsReadingPhase != 0) {
       
-        osal_start_timerEx(zclApp_TaskID, APP_READ_SENSORS_EVT, 30);
+        osal_start_timerEx(zclApp_TaskID, APP_READ_SENSORS_EVT, 20);
     }
 }
 
@@ -323,136 +345,26 @@ static void _delay_us(uint16 microSecs) {
 void user_delay_ms(uint32_t period) { _delay_us(1000 * period); }
 
 static void zclApp_Report(void) { 
-  osal_start_timerEx(zclApp_TaskID, APP_READ_SENSORS_EVT, 100); 
+  
+  if(devState == DEV_END_DEVICE){
+  osal_start_timerEx(zclApp_TaskID, APP_READ_SENSORS_EVT, 250); 
+  }
+ 
+ if(devState == DEV_END_DEVICE && pushBut == true){
+  zclApp_LedOn();
+  }
 }
 
 
 static void zclApp_SendTemp(void){
-   if(!pushBut){
-    if (abs(zclApp_Temperature_Sensor_MeasuredValue - temp_old) >= temp_tr) {
-        temp_old = zclApp_Temperature_Sensor_MeasuredValue;
-        //LREP("ReadIntTempSens t=%d\r\n", zclApp_Temperature_Sensor_MeasuredValue);
-        //bdb_RepChangedAttrValue(zclApp_FirstEP.EndPoint, TEMP, ATTRID_MS_TEMPERATURE_MEASURED_VALUE);
-        zclSendTemp(zclApp_Temperature_Sensor_MeasuredValue);
-    }
-   }
-}
-
-
-static void zclApp_SendHum(void){
-   if(!pushBut){
-    if (abs(zclApp_HumiditySensor_MeasuredValue - humi_old) >= humi_tr*10) {
-        humi_old = zclApp_HumiditySensor_MeasuredValue;
-        //LREP("ReadIntTempSens t=%d\r\n", zclApp_HumiditySensor_MeasuredValue);
-        //bdb_RepChangedAttrValue(zclApp_FirstEP.EndPoint, HUMIDITY, ATTRID_MS_RELATIVE_HUMIDITY_MEASURED_VALUE);
-        zclSendHum(zclApp_HumiditySensor_MeasuredValue);
-    }
-   }
-}
-
-
-static void zclSendTemp(int16 temp) {
-  
-  const uint8 NUM_ATTRIBUTES = 1;
+   if(pushBut == true){
   zclReportCmd_t *pReportCmd;
+  const uint8 NUM_ATTRIBUTES = 5;
+  
   pReportCmd = osal_mem_alloc(sizeof(zclReportCmd_t) + (NUM_ATTRIBUTES * sizeof(zclReport_t)));
   if (pReportCmd != NULL) {
     pReportCmd->numAttr = NUM_ATTRIBUTES;
-    pReportCmd->attrList[0].attrID = ATTRID_MS_TEMPERATURE_MEASURED_VALUE;
-    pReportCmd->attrList[0].dataType = ZCL_DATATYPE_INT16;
-    pReportCmd->attrList[0].attrData = (void *)(&temp);
-    zcl_SendReportCmd(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TEMP, pReportCmd, ZCL_FRAME_CLIENT_SERVER_DIR, false, bdb_getZCLFrameCounter());
-  }
-  osal_mem_free(pReportCmd);
-}
-
-static void zclSendHum(uint16 hum) {
-  
-  const uint8 NUM_ATTRIBUTES = 1;
-  zclReportCmd_t *pReportCmd;
-  pReportCmd = osal_mem_alloc(sizeof(zclReportCmd_t) + (NUM_ATTRIBUTES * sizeof(zclReport_t)));
-  if (pReportCmd != NULL) {
-    pReportCmd->numAttr = NUM_ATTRIBUTES;
-    pReportCmd->attrList[0].attrID = ATTRID_MS_RELATIVE_HUMIDITY_MEASURED_VALUE;
-    pReportCmd->attrList[0].dataType = ZCL_DATATYPE_UINT16;
-    pReportCmd->attrList[0].attrData = (void *)(&hum);
-    zcl_SendReportCmd(zclApp_FirstEP.EndPoint, &inderect_DstAddr, HUMIDITY, pReportCmd, ZCL_FRAME_CLIENT_SERVER_DIR, false, bdb_getZCLFrameCounter());
-  }
-  osal_mem_free(pReportCmd);
-}
-
-
-static void zclApp_SendRepTime(void){
-
-  switch (currentConfigRepPhase++) {  
-      
-    case 0:
-      zclSendRT();
-      break;      
-      
-    case 1:
-      zclSendCTTr();
-      break;
-      
-    case 2:   
-      zclSendCHTr();
-        break;
-        
-    default:
-        currentConfigRepPhase = 0;
-        HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
-        osal_pwrmgr_task_state(zclApp_TaskID, PWRMGR_CONSERVE);
-        break;
-    }
-    if (currentConfigRepPhase != 0) {
-        osal_start_timerEx(zclApp_TaskID, APP_REPORT_CEVT, 50);
-    }
-}
-
-
-static void zclApp_ConfigTemp(void){
-    if(zclApp_Temperature_Sensor_MeasuredValue >= zclApp_Config.HighTemp*100){
-      zclGeneral_SendOnOff_CmdOff(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TRUE, bdb_getZCLFrameCounter());
-    }else if(zclApp_Temperature_Sensor_MeasuredValue <= zclApp_Config.LowTemp*100){
-      zclGeneral_SendOnOff_CmdOn(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TRUE, bdb_getZCLFrameCounter());
-    }
-}
-
-
-static void zclApp_ConfigHum(void){
-if(zclApp_Config.EnableHum == 1){
-      if(zclApp_HumiditySensor_MeasuredValue >= zclApp_Config.HighHum*100){
-      zclGeneral_SendOnOff_CmdOn(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TRUE, bdb_getZCLFrameCounter());
-    }else if(zclApp_HumiditySensor_MeasuredValue <= zclApp_Config.HighHum*100){
-      zclGeneral_SendOnOff_CmdOff(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TRUE, bdb_getZCLFrameCounter());
-    }
-   }
-}
-
-
-static void zclSendRT(void) {
-  
-  const uint8 NUM_ATTRIBUTES = 1;
-  zclReportCmd_t *pReportCmd;
-  pReportCmd = osal_mem_alloc(sizeof(zclReportCmd_t) + (NUM_ATTRIBUTES * sizeof(zclReport_t)));
-  if (pReportCmd != NULL) {
-    pReportCmd->numAttr = NUM_ATTRIBUTES;
-    pReportCmd->attrList[0].attrID = ATTRID_ReportDelay;
-    pReportCmd->attrList[0].dataType = ZCL_DATATYPE_UINT16;
-    pReportCmd->attrList[0].attrData = (void *)(&zclApp_Config.ReportDelay);
-    zcl_SendReportCmd(zclApp_FirstEP.EndPoint, &inderect_DstAddr, POWER_CFG, pReportCmd, ZCL_FRAME_CLIENT_SERVER_DIR, false, bdb_getZCLFrameCounter());
-  }
-  osal_mem_free(pReportCmd);
-}
-
-
-static void zclSendCTTr(void) {
-  
-  const uint8 NUM_ATTRIBUTES = 4;
-  zclReportCmd_t *pReportCmd;
-  pReportCmd = osal_mem_alloc(sizeof(zclReportCmd_t) + (NUM_ATTRIBUTES * sizeof(zclReport_t)));
-  if (pReportCmd != NULL) {
-    pReportCmd->numAttr = NUM_ATTRIBUTES;
+    
     pReportCmd->attrList[0].attrID = ATTRID_MS_TEMPERATURE_MEASURED_VALUE;
     pReportCmd->attrList[0].dataType = ZCL_DATATYPE_INT16;
     pReportCmd->attrList[0].attrData = (void *)(&zclApp_Temperature_Sensor_MeasuredValue);
@@ -468,20 +380,29 @@ static void zclSendCTTr(void) {
     pReportCmd->attrList[3].attrID = ATTRID_SET_LOWTEMP;
     pReportCmd->attrList[3].dataType = ZCL_INT16;
     pReportCmd->attrList[3].attrData = (void *)(&zclApp_Config.LowTemp);
-
-    zcl_SendReportCmd(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TEMP, pReportCmd, ZCL_FRAME_CLIENT_SERVER_DIR, false, bdb_getZCLFrameCounter());
+    
+    pReportCmd->attrList[4].attrID = ATTRID_INVERT_LOGIC_TEMP;
+    pReportCmd->attrList[4].dataType = ZCL_DATATYPE_BOOLEAN;
+    pReportCmd->attrList[4].attrData = (void *)(&zclApp_Config.InvertLogicTemp);
+  
+    zcl_SendReportCmd(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TEMP, pReportCmd, ZCL_FRAME_SERVER_CLIENT_DIR, true, SeqNum++);
   }
-  osal_mem_free(pReportCmd);
+    osal_mem_free(pReportCmd);
+  }else{
+    bdb_RepChangedAttrValue(zclApp_FirstEP.EndPoint, TEMP, ATTRID_MS_TEMPERATURE_MEASURED_VALUE);
+    }
 }
 
 
-static void zclSendCHTr(void) {
-  
-  const uint8 NUM_ATTRIBUTES = 4;
+static void zclApp_SendHum(void){
+  if(pushBut == true){
   zclReportCmd_t *pReportCmd;
+  const uint8 NUM_ATTRIBUTES = 5;
+  
   pReportCmd = osal_mem_alloc(sizeof(zclReportCmd_t) + (NUM_ATTRIBUTES * sizeof(zclReport_t)));
   if (pReportCmd != NULL) {
     pReportCmd->numAttr = NUM_ATTRIBUTES;
+    
     pReportCmd->attrList[0].attrID = ATTRID_MS_RELATIVE_HUMIDITY_MEASURED_VALUE;
     pReportCmd->attrList[0].dataType = ZCL_DATATYPE_UINT16;
     pReportCmd->attrList[0].attrData = (void *)(&zclApp_HumiditySensor_MeasuredValue);
@@ -497,9 +418,149 @@ static void zclSendCHTr(void) {
     pReportCmd->attrList[3].attrID = ATTRID_SET_LOWHUM;
     pReportCmd->attrList[3].dataType = ZCL_UINT16;
     pReportCmd->attrList[3].attrData = (void *)(&zclApp_Config.LowHum);
+    
+    pReportCmd->attrList[4].attrID = ATTRID_INVERT_LOGIC_HUM;
+    pReportCmd->attrList[4].dataType = ZCL_DATATYPE_BOOLEAN;
+    pReportCmd->attrList[4].attrData = (void *)(&zclApp_Config.InvertLogicHum);
 
-    zcl_SendReportCmd(zclApp_FirstEP.EndPoint, &inderect_DstAddr, HUMIDITY, pReportCmd, ZCL_FRAME_CLIENT_SERVER_DIR, false, bdb_getZCLFrameCounter());
+    zcl_SendReportCmd(zclApp_FirstEP.EndPoint, &inderect_DstAddr, HUMIDITY, pReportCmd, ZCL_FRAME_SERVER_CLIENT_DIR, true, SeqNum++);
   }
-  osal_mem_free(pReportCmd);
-  zclSendHum(zclApp_HumiditySensor_MeasuredValue);
+    osal_mem_free(pReportCmd);
+ }else{
+    bdb_RepChangedAttrValue(zclApp_FirstEP.EndPoint, HUMIDITY, ATTRID_MS_RELATIVE_HUMIDITY_MEASURED_VALUE); 
+  }
+}
+
+
+
+static void zclApp_Termostat(void){
+    if(zclApp_Config.EnableTemp == 1){
+  
+    if(zclApp_Temperature_Sensor_MeasuredValue > zclApp_Config.HighTemp*100){
+      if(zclApp_Config.InvertLogicTemp == 1){
+        if(bdbAttributes.bdbNodeIsOnANetwork == 1){
+        zclGeneral_SendOnOff_CmdOn(zclApp_FirstEP.EndPoint, &inderect_DstAddr, true, bdb_getZCLFrameCounter());
+        }
+      }else{
+        if(bdbAttributes.bdbNodeIsOnANetwork == 1){
+        zclGeneral_SendOnOff_CmdOff(zclApp_FirstEP.EndPoint, &inderect_DstAddr, true, bdb_getZCLFrameCounter());
+        }
+      }
+    }else if(zclApp_Temperature_Sensor_MeasuredValue < zclApp_Config.LowTemp*100){
+      if(zclApp_Config.InvertLogicTemp == 1){
+        if(bdbAttributes.bdbNodeIsOnANetwork == 1){
+        zclGeneral_SendOnOff_CmdOff(zclApp_FirstEP.EndPoint, &inderect_DstAddr, true, bdb_getZCLFrameCounter());
+        }
+      }else{
+        if(bdbAttributes.bdbNodeIsOnANetwork == 1){
+        zclGeneral_SendOnOff_CmdOn(zclApp_FirstEP.EndPoint, &inderect_DstAddr, true, bdb_getZCLFrameCounter());
+        }
+      }
+    }
+  }
+}
+
+
+static void zclApp_Gigrostat(void){
+ if(zclApp_Config.EnableHum == 1){
+  
+    if(zclApp_HumiditySensor_MeasuredValue > zclApp_Config.HighHum*100){
+      if(zclApp_Config.InvertLogicHum == 1){
+        if(bdbAttributes.bdbNodeIsOnANetwork == 1){
+        zclGeneral_SendOnOff_CmdOff(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TRUE, bdb_getZCLFrameCounter());
+        }
+      }else{
+        if(bdbAttributes.bdbNodeIsOnANetwork == 1){
+        zclGeneral_SendOnOff_CmdOn(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TRUE, bdb_getZCLFrameCounter());
+        }
+      }
+    }else if(zclApp_HumiditySensor_MeasuredValue < zclApp_Config.LowHum*100){
+      if(zclApp_Config.InvertLogicHum == 1){
+        if(bdbAttributes.bdbNodeIsOnANetwork == 1){
+        zclGeneral_SendOnOff_CmdOn(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TRUE, bdb_getZCLFrameCounter());
+        }
+      }else{
+        if(bdbAttributes.bdbNodeIsOnANetwork == 1){
+        zclGeneral_SendOnOff_CmdOff(zclApp_FirstEP.EndPoint, &inderect_DstAddr, TRUE, bdb_getZCLFrameCounter());
+        }
+      }
+    }
+  }
+}
+
+
+
+
+
+static uint8 getBatteryVoltageZCL(uint16 millivolts) {
+    uint8 volt8 = (uint8)(millivolts / 100);
+    if ((millivolts - (volt8 * 100)) > 50) {
+        return volt8 + 1;
+    } else {
+        return volt8;
+    }
+}
+
+static uint16 getBatteryVoltage(void) {
+    HalAdcSetReference(HAL_ADC_REF_125V);
+    zclBattery_RawAdc = adcReadSampled(HAL_ADC_CHANNEL_VDD, HAL_ADC_RESOLUTION_14, HAL_ADC_REF_125V, 10);
+    return (uint16)(zclBattery_RawAdc * MULTI);
+}
+
+
+static uint8 getBatteryRemainingPercentageZCLCR2032(uint16 volt16) {
+    float battery_level;
+    if (volt16 >= 3000) {
+        battery_level = 100;
+    } else if (volt16 > 2900) {
+        battery_level = 100 - ((3000 - volt16) * 58) / 100;
+    } else if (volt16 > 2740) {
+        battery_level = 42 - ((2900 - volt16) * 24) / 160;
+    } else if (volt16 > 2440) {
+        battery_level = 18 - ((2740 - volt16) * 12) / 300;
+    } else if (volt16 > 2100) {
+        battery_level = 6 - ((2440 - volt16) * 6) / 340;
+    } else {
+        battery_level = 0;
+    }
+    return (uint8)(battery_level * 2);
+}
+
+
+static void zclBattery_Read(void) {
+    uint16 millivolts = getBatteryVoltage();
+    zclBattery_Voltage = getBatteryVoltageZCL(millivolts);
+    zclBattery_PercentageRemainig = ZCL_BATTERY_REPORT_REPORT_CONVERTER(millivolts);
+    //LREP("Battery voltageZCL=%d prc=%d voltage=%d\r\n", zclBattery_Voltage, zclBattery_PercentageRemainig, millivolts);
+}
+
+
+static void zclBattery_Report(void) {
+  zclBattery_Read();
+if(pushBut == false){
+   bdb_RepChangedAttrValue(2, POWER_CFG, ATTRID_POWER_CFG_BATTERY_PERCENTAGE_REMAINING);
+}else{
+    zclReportCmd_t *pReportCmd;
+    const uint8 NUM_ATTRIBUTES = 3;
+    
+    pReportCmd = osal_mem_alloc(sizeof(zclReportCmd_t) + (NUM_ATTRIBUTES * sizeof(zclReport_t)));
+    if (pReportCmd != NULL) {
+        pReportCmd->numAttr = NUM_ATTRIBUTES;
+
+         pReportCmd->attrList[0].attrID = ATTRID_POWER_CFG_BATTERY_VOLTAGE;
+        pReportCmd->attrList[0].dataType = ZCL_DATATYPE_UINT8;
+        pReportCmd->attrList[0].attrData = (void *)(&zclBattery_Voltage);
+
+        pReportCmd->attrList[1].attrID = ATTRID_POWER_CFG_BATTERY_PERCENTAGE_REMAINING;
+        pReportCmd->attrList[1].dataType = ZCL_DATATYPE_UINT8;
+        pReportCmd->attrList[1].attrData = (void *)(&zclBattery_PercentageRemainig);
+        
+        pReportCmd->attrList[2].attrID = ATTRID_ReportDelay;
+        pReportCmd->attrList[2].dataType = ZCL_UINT16;
+        pReportCmd->attrList[2].attrData = (void *)(&zclApp_Config.ReportDelay);
+        
+        zcl_SendReportCmd(1, &inderect_DstAddr, POWER_CFG, pReportCmd, ZCL_FRAME_SERVER_CLIENT_DIR, true, SeqNum++);
+    }
+    osal_mem_free(pReportCmd);
+}
 }
